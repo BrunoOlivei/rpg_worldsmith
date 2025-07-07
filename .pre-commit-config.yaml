@@ -16,10 +16,10 @@ repos:
 
       - id: pytest
         name: pytest
-        entry: uv run pytest
+        entry: pytest
         language: system
         types: [python]
-        pass_filenames: false
+        files: ^tests/
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
