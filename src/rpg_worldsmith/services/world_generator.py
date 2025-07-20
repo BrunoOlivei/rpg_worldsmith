@@ -1,19 +1,19 @@
-from pathlib import Path
 import json
 import re
-from typing import Dict
+from pathlib import Path
+from typing import Dict, Tuple
 
 from openai import OpenAI
-from unidecode import unidecode
 
 from rpg_worldsmith.config import settings
-
-
-def slugify(name: str) -> str:
-    return re.sub(r"[^\w\-]", "", unidecode(name).lower().replace(" ", "-"))
+from rpg_worldsmith.utils.slugify import slugify
 
 
 class WorldGenerator:
+    """
+    WorldGenerator is a service that generates a rich and unique RPG world based on player preferences.
+    """
+
     def __init__(self, preferences: Dict[str, str]):
         self.preferences = preferences
         self.output_dir: Path = settings.DATA_PATH
@@ -23,6 +23,17 @@ class WorldGenerator:
         self.metadata: Dict[str, str] = {}
 
     def format_prompt(self) -> str:
+        """
+        Prompt for create a rich and unique RPG world based on player preferences.
+        This prompt is designed to guide the AI in generating a detailed and immersive
+        narrative world, considering various aspects such as genre, tone, society structure,
+        technology level, key elements, central themes, characters, group objectives, and overall tone.
+        The response should include a detailed narrative in Markdown format and a JSON structure
+        with key metadata about the generated world.
+        The prompt is structured to ensure clarity and comprehensiveness, allowing the AI to
+        create a world that is not only imaginative but also playable and relevant to the characters
+        that will inhabit it.
+        """
         return f"""
         Você é um arquiteto de mundos narrativos e temáticos para jogos de RPG de mesa.
         Seu objetivo é criar universos ricos e únicos — fantásticos, distópicos, futuristas,
@@ -54,6 +65,16 @@ class WorldGenerator:
         """
 
     def call_openai(self, prompt: str) -> str:
+        """
+        Call the OpenAI API to generate a world based on the provided prompt.
+        This method sends the prompt to the OpenAI API and retrieves the response.
+
+        Args:
+            prompt (str): The formatted prompt to send to the OpenAI API.
+
+        Returns:
+            str: The response text from the OpenAI API, which contains the generated world description.
+        """
         try:
             response = self.client.chat.completions.create(
                 model=settings.OPENAI_MODEL,
@@ -78,7 +99,14 @@ class WorldGenerator:
         except Exception as e:
             raise RuntimeError(f"Erro ao chamar a API OpenAI: {e}")
 
-    def parse_response(self) -> tuple[str, Dict[str, str]]:
+    def parse_response(self) -> Tuple[str, Dict[str, str]]:
+        """
+        Parse the response from the AI to extract the markdown summary and metadata in JSON format.
+
+        Returns:
+            Tuple[str, Dict[str, str]]: A tuple containing the markdown summary and a dictionary
+            with the metadata extracted from the JSON block in the response.
+        """
         match = re.search(r"```json(.*?)```", self.response_text, re.DOTALL)
         self.markdown = self.response_text.split("```json")[0].strip()
 
@@ -123,19 +151,46 @@ class WorldGenerator:
             raise RuntimeError(f"Erro ao salvar o arquivo Markdown: {e}")
 
     def save_json(self) -> Path:
-        world_name = slugify(self.metadata.get("nome_mundo", "mundo_sem_nome"))
-        world_path = self.output_dir / world_name
+        """
+        Save the metadata of the generated world to a JSON file.
+        The file is named 'metadados.json' and is stored in a subdirectory named after the world,
+        which is derived from the world name in the metadata.
+        If the world name is not provided, it defaults to 'mundo_sem_nome'.
+        The directory structure is created if it does not exist.
 
-        json_path = world_path / "metadados.json"
-        with open(json_path, "w", encoding="utf-8") as f:
-            json.dump(self.metadata, f, indent=2, ensure_ascii=False)
+        Returns:
+            Path: The path to the saved JSON file.
 
-        return json_path
+        """
+        try:
+            world_name = slugify(self.metadata.get("nome_mundo", "mundo_sem_nome"))
+            world_path = self.output_dir / world_name
+
+            json_path = world_path / "metadados.json"
+            with open(json_path, "w", encoding="utf-8") as f:
+                json.dump(self.metadata, f, indent=2, ensure_ascii=False)
+
+            return json_path
+        except Exception as e:
+            raise RuntimeError(f"Erro ao salvar o arquivo JSON: {e}")
+
+    def show_markdown(self, md_path: Path) -> None:
+        print("\n📘 Mundo gerado com sucesso! Aqui está o resumo narrativo:\n")
+        print("=" * 80)
+
+        try:
+            with md_path.open("r", encoding="utf-8") as f:
+                print(f.read())
+        except FileNotFoundError:
+            print("❌ Arquivo de resumo não encontrado.")
+        print("=" * 80)
+        print("✅ Fim da geração do mundo.\n")
 
     def generate(self) -> Dict[str, str]:
         prompt = self.format_prompt()
         self.call_openai(prompt)
         self.parse_response()
-        self.save_markdown()
+        md_path = self.save_markdown()
         self.save_json()
+        self.show_markdown(md_path)
         return self.metadata
